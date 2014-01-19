@@ -152,7 +152,11 @@ handle_info({'EXIT', Pid, Reason}, State) ->
             {stop, normal, State}
     end.
 
-terminate(_Reason, _State) ->
+terminate(_Reason, State) ->
+    State#state.worker_pid ! {shutdown, self()},
+    receive
+        ok -> ok
+    end,
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -307,7 +311,12 @@ needs_shutdown(State) ->
                     %% catch this so that selective recieve doesn't kill us when running
                     %% the riakclient_driver
                     false
-            end
+            end;
+        {shutdown, Parent} ->
+            (catch (State#state.driver):terminate(normal,
+                                                  State#state.driver_state)),
+            Parent ! ok,
+            true
     after 0 ->
             false
     end.
