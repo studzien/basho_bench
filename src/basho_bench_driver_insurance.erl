@@ -21,13 +21,14 @@ new(Id) ->
 
 run({user, changeEmail}, _, _, #state{username=Username}=State) ->
     Email = "other@email.com",
-    detergent:call(service(users, State), "changeEmail", [Username, Email]),
-    {ok, State};
+    Return = detergent:call(service(users, State), "changeEmail",
+                            [Username, Email]),
+    check_return({Return, State});
 run({user, getUsers}, _, _, State) ->
-    detergent:call(service(users, State), "getUsers", []),
-    {ok, State};
+    Return = detergent:call(service(users, State), "getUsers", []),
+    check_return({Return, State});
 run({decision, Op}, KeyGen, ValueGen, State) ->
-    run_decision(Op, KeyGen, ValueGen, State);
+    check_return(run_decision(Op, KeyGen, ValueGen, State));
 run(Op, _KeyGen, _ValueGen, State) ->
     error_logger:info_msg("~p~n", [Op]),
     {silent, State}.
@@ -40,63 +41,73 @@ terminate(_Reason, #state{username = Username}=State) ->
 %% ====================================================================
 %% Particular service handlers
 %% ====================================================================
+check_return({{ok, _, _}, State}) ->
+    {ok, State};
+check_return({{error, Message}, State}) ->
+    {error, Message, State};
+check_return({silent, State}) ->
+    {silent, State}.
+
 run_decision(addTicket, _, _, #state{tickets=Data}=State) ->
     Description = random_string(140),
     case scrub:call(service(decision, State), "addTicket",
                     [Description, "creator"]) of
-        {ok, _, [{_, _, Id}]} ->
-            {ok, State#state{tickets=[Id|Data]}};
-        _ ->
-            {error, bad_response, State}
+        {ok, _, [{_, _, Id}]}=Reply ->
+            {Reply, State#state{tickets=[Id|Data]}};
+        Other ->
+            {Other, State}
     end;
 run_decision(listTickets, _, _, State) ->
-    scrub:call(service(decision, State), "listTickets", ["owner"]),
-    {ok, State};
+    {scrub:call(service(decision, State), "listTickets", ["owner"]), State};
 run_decision(getTickets, _, _, State) ->
-    scrub:call(service(decision, State), "getTickets", ["creator"]),
-    {ok, State};
+    {scrub:call(service(decision, State), "getTickets", ["creator"]), State};
 run_decision(getAllTickets, _, _, State) ->
-    scrub:call(service(decision, State), "getAllTickets", []),
-    {ok, State};
+    {scrub:call(service(decision, State), "getAllTickets", []), State};
 run_decision(deleteTicket, _, _, #state{tickets=[Id|Rest]}=State) ->
-    scrub:call(service(decision, State), "deleteTicket", [Id]),
-    {ok, State#state{tickets=Rest}};
+    case scrub:call(service(decision, State), "deleteTicket", [Id]) of
+        {ok, _, _}=Reply -> {Reply, State#state{tickets=Rest}};
+        Other            -> {Other, State}
+    end;
 run_decision(takeOwnership, _, _, #state{tickets=[Id|_]}=State) ->
-    scrub:call(service(decision, State), "takeOwnership", [Id, "owner"]),
-    {ok, State};
+    {scrub:call(service(decision, State), "takeOwnership", [Id, "owner"]),
+     State};
 run_decision(requestEval, _, _, #state{tickets=[Id|_]}=State) ->
-    scrub:call(service(decision, State), "requestEval",
+    {scrub:call(service(decision, State), "requestEval",
                [Id, random_string(255)]),
-    {ok, State};
+     State};
 run_decision(getTicketHistory, _, _, #state{tickets=[Id|_]}=State) ->
-    scrub:call(service(decision, State), "getTicketHistory", [Id]),
-    {ok, State};
+    {scrub:call(service(decision, State), "getTicketHistory", [Id]),
+     State};
 run_decision(getTicket, _, _, #state{tickets=[Id|_]}=State) ->
-    scrub:call(service(decision, State), "getTicket", [Id]),
-    {ok, State};
+    {scrub:call(service(decision, State), "getTicket", [Id]),
+     State};
 run_decision(getAttachment, _, _,
              #state{attachments=[{Ticket,Att}|_]}=State) ->
-    scrub:call(service(decision, State), "getAttachment", [Ticket, Att]),
-    {ok, State};
+    {scrub:call(service(decision, State), "getAttachment", [Ticket, Att]),
+     State};
 run_decision(evalEta, _, _, #state{tickets=[Id|_]}=State) ->
-    scrub:call(service(decision, State), "evalEta",
+    {scrub:call(service(decision, State), "evalEta",
                [Id, iso_8601_fmt(calendar:now_to_local_time(now()))]),
-    {ok, State};
+     State};
 run_decision(deleteDoc, _, _,
              #state{attachments=[{Ticket,Att}|Rest]}=State) ->
-    scrub:call(service(decision, State), "deleteDoc", [Ticket, Att]),
-    {ok, State#state{attachments=Rest}};
+    case scrub:call(service(decision, State), "deleteDoc", [Ticket, Att]) of
+        {ok, _, _}=Reply -> {Reply, State#state{attachments=Rest}};
+        Other            -> {Other, State}
+    end;
 run_decision(attachDoc, _, ValueGen,
              #state{tickets=[Id|_],attachments=Atts}=State) ->
     Name = random_string(20),
-    scrub:call(service(decision, State), "attachDoc",
-               [Id, Name, "image/bmp", base64:encode_to_string(ValueGen())]),
-    {ok, State#state{attachments=[{Id, Name}|Atts]}};
+    case scrub:call(service(decision, State), "attachDoc",
+                [Id, Name, "image/bmp", base64:encode_to_string(ValueGen())]) of
+        {ok, _, _}=Reply -> {Reply, State#state{attachments=[{Id, Name}|Atts]}};
+        Other            -> {Other, State}
+    end;
 run_decision(addDecission, _, _, #state{tickets=[Id|_]}=State) ->
     Decision = random_string(6),
-    scrub:call(service(decision, State), "addDecission",
+    {scrub:call(service(decision, State), "addDecission",
                [Id, Decision, "decidor"]),
-    {ok, State};
+     State};
 run_decision(_Op, _, _, State) ->
     {silent, State}.
 
