@@ -6,6 +6,8 @@
 
 -record(state, {username, password,
                 users,
+                role, roles,
+                param, params,
                 decision, tickets = [], attachments = []}).
 %% ====================================================================
 %% API
@@ -19,14 +21,12 @@ new(Id) ->
     {ok, undefined, [{_,_,0}]} = detergent:call(Users, "authorization", [Username, Password]),
     {ok, State#state{username = Username, password = Password}}.
 
-run({user, changeEmail}, _, _, #state{username=Username}=State) ->
-    Email = "other@email.com",
-    Return = detergent:call(service(users, State), "changeEmail",
-                            [Username, Email]),
-    check_return({Return, State});
-run({user, getUsers}, _, _, State) ->
-    Return = detergent:call(service(users, State), "getUsers", []),
-    check_return({Return, State});
+run({user, Op}, KeyGen, ValueGen, State) ->
+    check_return(run_user(Op, KeyGen, ValueGen, State));
+run({role, Op}, KeyGen, ValueGen, State) ->
+    check_return(run_role(Op, KeyGen, ValueGen, State));
+run({param, Op}, KeyGen, ValueGen, State) ->
+    check_return(run_param(Op, KeyGen, ValueGen, State));
 run({decision, Op}, KeyGen, ValueGen, State) ->
     check_return(run_decision(Op, KeyGen, ValueGen, State));
 run(Op, _KeyGen, _ValueGen, State) ->
@@ -35,6 +35,8 @@ run(Op, _KeyGen, _ValueGen, State) ->
 
 terminate(_Reason, #state{username = Username}=State) ->
     detergent:call(service(users,State), "removeUser", [Username]),
+    [detergent:call(service(roles,State), "removeRole", [Role]) ||
+        Role <- State#state.roles],
     [scrub:call(service(decision,State), "deleteTicket", [Id]) ||
         Id <- State#state.tickets].
 
@@ -46,6 +48,52 @@ check_return({{ok, _, _}, State}) ->
 check_return({{error, Message}, State}) ->
     {error, Message, State};
 check_return({silent, State}) ->
+    {silent, State}.
+
+run_user(changeEmail, _, _, #state{username=Username}=State) ->
+    Email = "other@email.com",
+    Return = detergent:call(service(users, State), "changeEmail",
+                            [Username, Email]),
+    {Return, State};
+run_user(getUsers, _, _, State) ->
+    Return = detergent:call(service(users, State), "getUsers", []),
+    {Return, State}.
+
+run_role(addRole, _, _, #state{username=Username, roles=[Role|_]}=State) ->
+    Return = detergent:call(service(roles, State), "addRole",
+                           [Username, Role]), 
+    {Return, State};
+run_role(createRole, _, _, #state{roles=Roles}=State) ->
+    Role = random_string(10),
+    Return = detergent:call(service(roles, State), "createRole", [Role]),
+    {Return, State#state{roles=[Role|Roles]}};
+run_role(getAllRoles, _, _, State) ->
+    Return = detergent:call(service(roles, State), "getAllRoles", []),
+    {Return, State};
+run_role(getUserRole, _, _, #state{username=Username}=State) ->
+    Return = detergent:call(service(roles, State), "getUserRole", [Username]),
+    {Return, State};
+run_role(removeRole, _, _, #state{roles=[Role|Rest]}=State) ->
+    Return = detergent:call(service(roles, State), "removeRole", [Role]),
+    {Return, State#state{roles=Rest}};
+run_role(revokeRole, _, _, #state{username=Username, roles=[Role|_]}=State) ->
+    Return = detergent:call(service(roles, State), "revokeRole",
+                            [Username, Role]),
+    {Return, State};
+run_role(_Op, _, _, State) ->
+    {silent, State}.
+
+run_param(getUserParam, _, _, #state{username=Username, params=[Param|_]}=State) ->
+    Return = detergent:call(service(params, State), "getUserParam",
+                            [Username, Param]),
+    {Return, State};
+run_param(setUserParam, _, _, #state{username=Username, param=Params}=State) ->
+    Key = random_string(20),
+    Value = random_string(100),
+    Return = detergent:call(service(params, State), "setUserParam",
+                            [Username, Key, Value]),
+    {Return, State#state{params=[Key|Params]}};
+run_param(_Op, _, _, State) ->
     {silent, State}.
 
 run_decision(addTicket, _, _, #state{tickets=Data}=State) ->
@@ -120,17 +168,24 @@ random_string(Length) ->
 username(Id) -> "benchmarkuser_" ++ integer_to_list(Id).
 password(Id) -> "password" ++ integer_to_list(Id).
 
-service(users, State) ->
-    State#state.users;
-service(decision, State) ->
-    State#state.decision.
+service(users, State) -> State#state.users;
+service(roles, State) -> State#state.role;
+service(params, State) -> State#state.param;
+service(decision, State) -> State#state.decision.
 
 prepare_wsdls() ->
     UsersEndpoint = basho_bench_config:get(users_endpoint),
     UsersWsdl = detergent:initModel(UsersEndpoint),
+    RolesEndpoint = basho_bench_config:get(roles_endpoint),
+    RolesWsdl = detergent:initModel(RolesEndpoint),
+    ParamsEndpoint = basho_bench_config:get(params_endpoint),
+    ParamsWsdl = detergent:initModel(ParamsEndpoint),
     DecisionEndpoint = basho_bench_config:get(decision_endpoint),
     DecisionWsdl = scrub:initModel(DecisionEndpoint),
-    #state{users = UsersWsdl, decision=DecisionWsdl}.
+    #state{users = UsersWsdl,
+           role = RolesWsdl,
+           param = ParamsWsdl,
+           decision=DecisionWsdl}.
 
 iso_8601_fmt(DateTime) ->
     {{Year,Month,Day},{Hour,Min,Sec}} = DateTime,
