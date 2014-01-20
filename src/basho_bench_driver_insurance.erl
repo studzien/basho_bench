@@ -121,6 +121,11 @@ run_damage(ownerDamagedVehicleData, _, _, #state{damages=[Id|_]}=State) ->
     Return = detergent:call(service(damages, State), "OwnerDamagedVehicleData",
                             [Id, 2, "01234567890"]),
     {Return, State};
+run_damage(damagedVehicleData, _, _, #state{damages=[Id|_]}=State) ->
+    R = random_string(20),
+    Return = detergent:call(service(damages, State), "DamagedVehicleData",
+                            [Id,R,R,R,2000,R,"2013-01-20","2013-01-20","2013-01-20"]),
+    {Return, State};
 run_damage(confirmation, _, _, #state{damages=[Id|_]}=State) ->
     Return = detergent:call(service(damages, State), "Confirmation", [Id]),
     {Return, State};
