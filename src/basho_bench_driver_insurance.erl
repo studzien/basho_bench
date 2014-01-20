@@ -6,6 +6,7 @@
 
 -record(state, {username, password,
                 users,
+                admin,
                 role, roles = [],
                 param, params = [],
                 damage, damages = [],
@@ -32,6 +33,8 @@ run({damage, Op}, KeyGen, ValueGen, State) ->
     check_return(run_damage(Op, KeyGen, ValueGen, State));
 run({decision, Op}, KeyGen, ValueGen, State) ->
     check_return(run_decision(Op, KeyGen, ValueGen, State));
+run({admin, Op}, KeyGen, ValueGen, State) ->
+    check_return(run_admin(Op, KeyGen, ValueGen, State));
 run(Op, _KeyGen, _ValueGen, State) ->
     error_logger:info_msg("~p~n", [Op]),
     {silent, State}.
@@ -195,6 +198,13 @@ run_decision(addDecission, _, _, #state{tickets=[Id|_]}=State) ->
 run_decision(_Op, _, _, State) ->
     {silent, State}.
 
+run_admin(isGroupAllowed, _, _, State) ->
+    Response = detergent:call(service(admin,State), "isGroupAllowed",
+                              [random_string(16), random_string(20)]),
+    {Response, State};
+run_admin(Op, _, _, State) ->
+    Response = detergent:call(service(admin,State), atom_to_list(Op), []),
+    {Response, State}.
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
@@ -208,7 +218,8 @@ service(users, State) -> State#state.users;
 service(roles, State) -> State#state.role;
 service(params, State) -> State#state.param;
 service(decision, State) -> State#state.decision;
-service(damages, State) -> State#state.damage. 
+service(damages, State) -> State#state.damage;
+service(admin, State) -> State#state.admin.
 
 prepare_wsdls() ->
     UsersEndpoint = basho_bench_config:get(users_endpoint),
@@ -221,11 +232,14 @@ prepare_wsdls() ->
     DamageWsdl = detergent:initModel(DamageEndpoint),
     DecisionEndpoint = basho_bench_config:get(decision_endpoint),
     DecisionWsdl = scrub:initModel(DecisionEndpoint),
+    AdminEndpoint = basho_bench_config:get(admin_endpoint),
+    AdminWsdl = detergent:initModel(AdminEndpoint),
     #state{users = UsersWsdl,
            role = RolesWsdl,
            param = ParamsWsdl,
            damage = DamageWsdl,
-           decision=DecisionWsdl}.
+           decision=DecisionWsdl,
+           admin = AdminWsdl}.
 
 iso_8601_fmt(DateTime) ->
     {{Year,Month,Day},{Hour,Min,Sec}} = DateTime,
