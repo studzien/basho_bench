@@ -4,17 +4,15 @@
          run/4,
          terminate/2]).
 
--record(state, {username, password,
-                users,
-                admin,
-                role, roles = [],
-                param, params = [],
-                damage, damages = [],
-                decision, tickets = [], attachments = []}).
+-export([random_string/1]).
+
+-include("basho_bench_driver_insurance.hrl").
 %% ====================================================================
 %% API
 %% ====================================================================
 new(Id) ->
+    Apps = [crypto, asn1, public_key, ssl, lhttpc],
+    [application:start(App) || App <- Apps],
     inets:start(),
     #state{users=Users} = State = prepare_wsdls(),
     Username = username(Id),
@@ -35,6 +33,8 @@ run({decision, Op}, KeyGen, ValueGen, State) ->
     check_return(run_decision(Op, KeyGen, ValueGen, State));
 run({admin, Op}, KeyGen, ValueGen, State) ->
     check_return(run_admin(Op, KeyGen, ValueGen, State));
+run({workflow, Op}, KeyGen, ValueGen, State) ->
+    basho_bench_driver_insurance_workflow:run(Op, KeyGen, ValueGen, State);
 run(Op, _KeyGen, _ValueGen, State) ->
     error_logger:info_msg("~p~n", [Op]),
     {silent, State}.
@@ -234,12 +234,14 @@ prepare_wsdls() ->
     DecisionWsdl = scrub:initModel(DecisionEndpoint),
     AdminEndpoint = basho_bench_config:get(admin_endpoint),
     AdminWsdl = detergent:initModel(AdminEndpoint),
+    WorkflowEndpoint = basho_bench_config:get(workflow_endpoint),
     #state{users = UsersWsdl,
            role = RolesWsdl,
            param = ParamsWsdl,
            damage = DamageWsdl,
            decision=DecisionWsdl,
-           admin = AdminWsdl}.
+           admin = AdminWsdl,
+           workflow = WorkflowEndpoint}.
 
 iso_8601_fmt(DateTime) ->
     {{Year,Month,Day},{Hour,Min,Sec}} = DateTime,
