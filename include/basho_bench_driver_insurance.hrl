@@ -5,4 +5,5 @@
                 param, params = [],
                 damage, damages = [],
                 decision, tickets = [], attachments = [],
-                workflow, sids = []}).
+                workflow, sids = [],
+                archive, docs = []}).

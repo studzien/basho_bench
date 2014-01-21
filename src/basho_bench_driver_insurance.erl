@@ -35,6 +35,8 @@ run({admin, Op}, KeyGen, ValueGen, State) ->
     check_return(run_admin(Op, KeyGen, ValueGen, State));
 run({workflow, Op}, KeyGen, ValueGen, State) ->
     basho_bench_driver_insurance_workflow:run(Op, KeyGen, ValueGen, State);
+run({archive, Op}, KeyGen, ValueGen, State) ->
+    basho_bench_driver_insurance_archive:run(Op, KeyGen, ValueGen, State);
 run(Op, _KeyGen, _ValueGen, State) ->
     error_logger:info_msg("~p~n", [Op]),
     {silent, State}.
@@ -209,7 +211,7 @@ run_admin(Op, _, _, State) ->
 %% Internal functions
 %% ====================================================================
 random_string(Length) ->
-    [random:uniform(93)+33 || _ <- lists:seq(1,Length)].
+    [random:uniform(57)+65 || _ <- lists:seq(1,Length)].
 
 username(Id) -> "benchmarkuser_" ++ integer_to_list(Id).
 password(Id) -> "password" ++ integer_to_list(Id).
@@ -235,13 +237,15 @@ prepare_wsdls() ->
     AdminEndpoint = basho_bench_config:get(admin_endpoint),
     AdminWsdl = detergent:initModel(AdminEndpoint),
     WorkflowEndpoint = basho_bench_config:get(workflow_endpoint),
+    ArchiveEndpoint = basho_bench_config:get(archive_endpoint),
     #state{users = UsersWsdl,
            role = RolesWsdl,
            param = ParamsWsdl,
            damage = DamageWsdl,
            decision=DecisionWsdl,
            admin = AdminWsdl,
-           workflow = WorkflowEndpoint}.
+           workflow = WorkflowEndpoint,
+           archive = ArchiveEndpoint}.
 
 iso_8601_fmt(DateTime) ->
     {{Year,Month,Day},{Hour,Min,Sec}} = DateTime,
